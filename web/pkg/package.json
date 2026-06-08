@@ -1,0 +1,15 @@
+{
+  "name": "dns-parser",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "dns_parser_bg.wasm",
+    "dns_parser.js",
+    "dns_parser.d.ts"
+  ],
+  "main": "dns_parser.js",
+  "types": "dns_parser.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
