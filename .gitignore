@@ -17,8 +17,7 @@ Thumbs.db
 *.log
 /tmp/
 
-*.pcap
-*.pcapng
+
 __pycache__/
 *.pyc
 web/pkg/
