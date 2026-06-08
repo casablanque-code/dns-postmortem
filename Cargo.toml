@@ -1,3 +1,5 @@
 [workspace]
 members = ["crates/parser"]
 resolver = "2"
+wasm-bindgen = "=0.2.95"
+serde-wasm-bindgen = "0.6"
