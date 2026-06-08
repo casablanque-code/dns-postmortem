@@ -1,42 +1,44 @@
-# dhcp-postmortem
+# dns-postmortem
 
-**Network Forensics Series** · Part 2 of N
+**Network Forensics Series** · Part 4 of N
 
-A Rust/WASM tool for post-mortem analysis of DHCP traffic captures.
+A Rust/WASM tool for post-mortem analysis of DNS traffic captures.
 Drop a `.pcap` or `.pcapng` file — get a full forensic report in your browser.
 
 ## What it detects
 
 | Anomaly | Description |
 |---|---|
-| **Rogue DHCP Server** | Two Offer responses to a single transaction from different servers |
-| **DHCP Starvation** | Discover flood pattern indicating pool exhaustion attack |
-| **IP Conflict** | Same IP assigned to two different MAC addresses |
-| **Lease Conflict** | ACK for an IP already in active lease |
-| **NAK Storm** | Repeated NAK cycle — client stuck in Discover→Request→NAK loop |
-| **Server Unreachable** | Discover without Offer within timeout window |
+| **DNS Tunneling** | Long subdomain labels or NULL/TXT queries consistent with data exfiltration or C2 |
+| **DGA Activity** | NXDOMAIN flood within a short window — Domain Generation Algorithm pattern |
+| **Subdomain Probing** | Slow persistent NXDOMAIN stream targeting subdomains of a single domain |
+| **Rogue Resolver** | Duplicate responses to the same transaction ID from different sources |
+| **Unsolicited Response** | Response without a matching query — possible spoofing attempt |
+| **Query Timeout** | Queries with no response within the timeout window |
+| **Truncated Response** | TC bit set — oversized response, client must retry over TCP |
+| **Query Retransmit** | Same query repeated 3+ times — packet loss or unresponsive server |
+| **Fast-Flux** | Significant TTL variation for the same domain across multiple responses |
 
-## FSM
+## Parsing notes
 
-RFC 2131 client state machine:
-
-```
-Init → Selecting → Requesting → Bound → Renewing → Rebinding → Expired
-```
+- Full RFC 1035 name compression with pointer loop detection (`MAX_PTR_DEPTH = 10`)
+- EDNS0 (RFC 6891) OPT record — UDP payload size, version, DO bit
+- DNS over TCP with 2-byte length prefix (RFC 1035 §4.2.2)
+- Request/response matching by `(txid, client_ip, server_ip)` tuple
 
 ## Structure
 
 ```
 crates/parser/   Rust WASM core
-  dhcp.rs        RFC 2131 + 2132 packet parser
-  analyzer.rs    DORA FSM + anomaly detection
+  dns.rs         RFC 1035 + EDNS0 packet parser
+  analyzer.rs    Request/response FSM + anomaly detection
   root_cause.rs  Causal chain correlation
-  net.rs         IP/UDP extractor
+  net.rs         IP/UDP/TCP extractor
   pcap.rs        Legacy pcap parser
   pcapng.rs      PCAPng parser
 
 web/             Single-file frontend (HTML/JS/CSS)
-dataset/         6 synthetic pcap scenarios
+dataset/         8 synthetic pcap scenarios
 ```
 
 ## Build
@@ -46,9 +48,8 @@ dataset/         6 synthetic pcap scenarios
 cargo install wasm-pack
 
 make build      # release WASM
-make dev        # dev build (no wasm-opt)
-make check      # cargo check only
-make dataset    # generate test pcaps (requires scapy)
+make check      # cargo check + tests
+make dataset    # generate test pcaps (Python stdlib only)
 ```
 
 ## Deploy
@@ -61,15 +62,18 @@ wrangler pages deploy web/
 
 | # | Scenario | Anomaly |
 |---|---|---|
-| 01 | Clean DORA | None — baseline |
-| 02 | Rogue Server | Two Offer on same xid |
-| 03 | Starvation | 50 Discover flood, legit client times out |
-| 04 | NAK Storm | Client in 5-cycle NAK loop |
-| 05 | Server Unreachable | Discover retransmits, no Offer |
-| 06 | IP Conflict | Same IP ACK'd to two MAC addresses |
+| 01 | Clean | Normal queries and responses — baseline |
+| 02 | NXDOMAIN Flood | 30 DGA-style queries in under 10 seconds |
+| 03 | Slow Probe | Subdomain enumeration across 8 subdomains |
+| 04 | DNS Tunneling | Long base32 labels + TXT/NULL queries |
+| 05 | Query Timeout | 5 queries to an unreachable server with retransmits |
+| 06 | Fast-Flux | Same domain answered with 720x TTL variation |
+| 07 | Truncated + TCP | TC bit set, retry over TCP |
+| 08 | Unsolicited | Spoofed second response from a rogue source |
 
 ## Series
 
 - [ospf-postmortem](https://github.com/casablanque-code/ospf-postmortem) — OSPF FSM reconstruction
-- **dhcp-postmortem** — DORA FSM + anomaly detection ← you are here
-- `stp-postmortem` — planned
+- [dhcp-postmortem](https://github.com/casablanque-code/dhcp-postmortem) — DORA FSM + anomaly detection
+- `stp-postmortem` — STP topology analysis
+- **dns-postmortem** — DNS forensics + tunneling detection ← you are here
