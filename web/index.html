@@ -4,857 +4,596 @@
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>dns-postmortem</title>
+<title>DNS Post-Mortem</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;600;800&display=swap');
-
-  :root {
-    --bg:        #0a0c0f;
-    --surface:   #111318;
-    --border:    #1e2229;
-    --border2:   #2a3040;
-    --text:      #c8d0dc;
-    --muted:     #555f6e;
-    --accent:    #00d4ff;
-    --accent2:   #0088bb;
-    --warn:      #f0a500;
-    --crit:      #ff4560;
-    --ok:        #00e096;
-    --mono:      'JetBrains Mono', monospace;
-    --sans:      'Syne', sans-serif;
-  }
-
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-  html, body {
-    height: 100%;
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--mono);
-    font-size: 13px;
-    line-height: 1.6;
-  }
-
-  /* ── Layout ── */
-  #app { display: flex; flex-direction: column; min-height: 100vh; }
-
-  header {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 18px 32px;
-    border-bottom: 1px solid var(--border);
-    background: var(--surface);
-  }
-
-  header h1 {
-    font-family: var(--sans);
-    font-size: 20px;
-    font-weight: 800;
-    letter-spacing: -0.5px;
-    color: #fff;
-  }
-
-  header h1 span { color: var(--accent); }
-
-  .badge {
-    font-size: 10px;
-    font-weight: 600;
-    padding: 2px 8px;
-    border-radius: 2px;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    background: var(--border2);
-    color: var(--muted);
-  }
-
-  main { flex: 1; padding: 24px 32px; display: flex; flex-direction: column; gap: 24px; }
-
-  /* ── Drop zone ── */
-  #dropzone {
-    border: 1.5px dashed var(--border2);
-    border-radius: 4px;
-    padding: 48px 32px;
-    text-align: center;
-    cursor: pointer;
-    transition: border-color 0.2s, background 0.2s;
-    background: var(--surface);
-  }
-
-  #dropzone:hover, #dropzone.drag-over {
-    border-color: var(--accent);
-    background: rgba(0, 212, 255, 0.04);
-  }
-
-  #dropzone .drop-icon {
-    font-size: 32px;
-    margin-bottom: 12px;
-    opacity: 0.5;
-  }
-
-  #dropzone p { color: var(--muted); }
-  #dropzone p strong { color: var(--accent); }
-
-  #file-input { display: none; }
-
-  /* ── Loading ── */
-  #loading {
-    display: none;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    padding: 32px;
-    color: var(--muted);
-  }
-
-  .spinner {
-    width: 18px; height: 18px;
-    border: 2px solid var(--border2);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-  }
-
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* ── Results ── */
-  #results { display: none; flex-direction: column; gap: 24px; }
-
-  /* ── Section header ── */
-  .section-label {
-    font-family: var(--sans);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 12px;
-  }
-
-  /* ── Summary cards ── */
-  .cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 12px;
-  }
-
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .card-label {
-    font-size: 10px;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    color: var(--muted);
-  }
-
-  .card-value {
-    font-family: var(--sans);
-    font-size: 28px;
-    font-weight: 800;
-    color: #fff;
-    line-height: 1;
-  }
-
-  .card-value.warn  { color: var(--warn); }
-  .card-value.crit  { color: var(--crit); }
-  .card-value.ok    { color: var(--ok); }
-  .card-value.accent{ color: var(--accent); }
-
-  /* ── Root cause ── */
-  #root-cause-box {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 20px 24px;
-  }
-
-  #root-cause-box.clean   { border-color: var(--ok);   }
-  #root-cause-box.warning { border-color: var(--warn);  }
-  #root-cause-box.critical{ border-color: var(--crit);  }
-
-  .rc-primary {
-    font-family: var(--sans);
-    font-size: 16px;
-    font-weight: 800;
-    margin-bottom: 6px;
-  }
-
-  .rc-primary.clean    { color: var(--ok); }
-  .rc-primary.warning  { color: var(--warn); }
-  .rc-primary.critical { color: var(--crit); }
-
-  .rc-desc { color: var(--muted); font-size: 12px; line-height: 1.7; }
-
-  .rc-chains {
-    margin-top: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .rc-chain {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    padding: 12px 16px;
-  }
-
-  .rc-chain-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 8px;
-  }
-
-  .rc-chain-kind {
-    font-weight: 700;
-    font-size: 12px;
-  }
-
-  .sev-badge {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    padding: 1px 6px;
-    border-radius: 2px;
-    text-transform: uppercase;
-  }
-
-  .sev-Info     { background: rgba(0,212,255,0.15); color: var(--accent); }
-  .sev-Warning  { background: rgba(240,165,0,0.15); color: var(--warn); }
-  .sev-Critical { background: rgba(255,69,96,0.15);  color: var(--crit); }
-
-  .rc-notes { list-style: none; }
-  .rc-notes li {
-    color: var(--muted);
-    font-size: 11px;
-    padding: 2px 0;
-  }
-  .rc-notes li::before { content: "→ "; color: var(--accent2); }
-
-  /* ── Topology ── */
-  #topo-wrap {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    overflow: hidden;
-    height: 340px;
-    position: relative;
-  }
-
-  #topo-canvas { width: 100%; height: 100%; display: block; }
-
-  #topo-legend {
-    position: absolute;
-    bottom: 12px;
-    right: 16px;
-    display: flex;
-    gap: 16px;
-    font-size: 10px;
-    color: var(--muted);
-  }
-
-  .legend-dot {
-    display: inline-block;
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    margin-right: 4px;
-    vertical-align: middle;
-  }
-
-  /* ── Events table ── */
-  .filter-bar {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin-bottom: 12px;
-    align-items: center;
-  }
-
-  .filter-btn {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    color: var(--muted);
-    font-family: var(--mono);
-    font-size: 11px;
-    padding: 4px 12px;
-    border-radius: 2px;
-    cursor: pointer;
-    transition: all 0.15s;
-    letter-spacing: 0.5px;
-  }
-
-  .filter-btn:hover { border-color: var(--border2); color: var(--text); }
-  .filter-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,212,255,0.06); }
-  .filter-btn.active.warn { border-color: var(--warn); color: var(--warn); background: rgba(240,165,0,0.06); }
-  .filter-btn.active.crit { border-color: var(--crit); color: var(--crit); background: rgba(255,69,96,0.06); }
-
-  .search-input {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    color: var(--text);
-    font-family: var(--mono);
-    font-size: 11px;
-    padding: 4px 10px;
-    border-radius: 2px;
-    outline: none;
-    min-width: 200px;
-    margin-left: auto;
-  }
-  .search-input:focus { border-color: var(--accent2); }
-  .search-input::placeholder { color: var(--muted); }
-
-  .table-wrap {
-    overflow-x: auto;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface);
-  }
-
-  table { width: 100%; border-collapse: collapse; }
-
-  thead th {
-    background: var(--bg);
-    text-align: left;
-    padding: 8px 14px;
-    font-size: 10px;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    color: var(--muted);
-    border-bottom: 1px solid var(--border);
-    white-space: nowrap;
-  }
-
-  tbody tr {
-    border-bottom: 1px solid var(--border);
-    transition: background 0.1s;
-  }
-
-  tbody tr:last-child { border-bottom: none; }
-  tbody tr:hover { background: rgba(255,255,255,0.02); }
-
-  tbody td {
-    padding: 7px 14px;
-    font-size: 11px;
-    white-space: nowrap;
-    max-width: 300px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    color: var(--text);
-  }
-
-  td.ts { color: var(--muted); font-size: 10px; }
-  td.name { color: var(--accent); font-weight: 600; }
-  td.muted { color: var(--muted); }
-
-  .no-events {
-    text-align: center;
-    padding: 32px;
-    color: var(--muted);
-  }
-
-  #event-count {
-    margin-left: auto;
-    font-size: 11px;
-    color: var(--muted);
-  }
-
-  footer {
-    padding: 12px 32px;
-    border-top: 1px solid var(--border);
-    color: var(--muted);
-    font-size: 10px;
-    letter-spacing: 0.5px;
-    display: flex;
-    gap: 16px;
-  }
-
-  footer a { color: var(--accent2); text-decoration: none; }
+:root {
+  --bg:        #080c0f;
+  --surface:   #0d1419;
+  --surface2:  #111c24;
+  --border:    #1a2530;
+  --border2:   #243040;
+  --text:      #c8d8e8;
+  --muted:     #4a6070;
+  --accent:    #00c8ff;
+  --accent2:   #0080b0;
+  --warn:      #ffaa00;
+  --crit:      #ff4444;
+  --ok:        #00dd88;
+  --info:      #6688aa;
+  --mono:      'JetBrains Mono', monospace;
+  --display:   'Syne', sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13px;line-height:1.6;min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:repeating-linear-gradient(0deg,transparent,transparent 39px,var(--border) 39px,var(--border) 40px),repeating-linear-gradient(90deg,transparent,transparent 39px,var(--border) 39px,var(--border) 40px);opacity:.18;pointer-events:none;z-index:0}
+#app{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:0 24px 80px}
+header{padding:48px 0 36px;border-bottom:1px solid var(--border);margin-bottom:40px;display:flex;align-items:flex-end;justify-content:space-between;gap:24px}
+.logo{display:flex;flex-direction:column;gap:4px}
+.logo-tag{font-size:10px;font-weight:600;letter-spacing:.25em;color:var(--accent);text-transform:uppercase}
+h1{font-family:var(--display);font-size:clamp(28px,5vw,44px);font-weight:800;color:#fff;letter-spacing:-.02em;line-height:1}
+h1 span{color:var(--accent)}
+.header-meta{text-align:right;color:var(--muted);font-size:11px;line-height:1.8}
+#dropzone{border:1px dashed var(--border2);border-radius:4px;padding:64px 40px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;background:var(--surface);position:relative;overflow:hidden}
+#dropzone::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 100%,rgba(0,200,255,.04) 0%,transparent 70%);pointer-events:none}
+#dropzone:hover,#dropzone.drag-over{border-color:var(--accent);background:#0d1820}
+#dropzone.drag-over{border-style:solid}
+.drop-icon{font-size:36px;margin-bottom:16px;filter:grayscale(.5)}
+.drop-title{font-family:var(--display);font-size:18px;font-weight:700;color:#fff;margin-bottom:8px}
+.drop-sub{color:var(--muted);font-size:12px}
+.drop-sub strong{color:var(--accent);font-weight:400}
+#file-input{display:none}
+#status{display:none;align-items:center;gap:12px;padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:4px;margin-top:16px;font-size:12px;color:var(--muted)}
+#status.visible{display:flex}
+.spinner{width:16px;height:16px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+.error-box{background:rgba(255,68,68,.08);border:1px solid rgba(255,68,68,.3);border-radius:4px;padding:16px 20px;color:var(--crit);font-size:12px;margin-top:16px;display:none}
+.error-box.visible{display:block}
+#results{display:none;margin-top:40px}
+#results.visible{display:block}
+.summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:40px}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:20px 16px 16px;position:relative;overflow:hidden;opacity:0;transform:translateY(12px);animation:fadeUp .4s ease forwards}
+.stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.stat-card.ok::before{background:var(--ok)}
+.stat-card.warn::before{background:var(--warn)}
+.stat-card.crit::before{background:var(--crit)}
+.stat-card.info::before{background:var(--accent)}
+.stat-label{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.stat-value{font-family:var(--display);font-size:32px;font-weight:800;line-height:1;color:#fff}
+.stat-card.crit .stat-value{color:var(--crit)}
+.stat-card.warn .stat-value{color:var(--warn)}
+.stat-card.ok   .stat-value{color:var(--ok)}
+.stat-sub{font-size:11px;color:var(--muted);margin-top:4px}
+@keyframes fadeUp{to{opacity:1;transform:translateY(0)}}
+.section-head{display:flex;align-items:center;gap:12px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+.section-title{font-family:var(--display);font-size:15px;font-weight:700;color:#fff;letter-spacing:-.01em}
+.section-count{font-size:11px;color:var(--muted);background:var(--border);padding:2px 8px;border-radius:2px}
+#rc-section{margin-bottom:48px}
+.verdict-bar{padding:14px 18px;border-radius:4px;margin-bottom:20px;font-size:12px;line-height:1.5;border-left:3px solid;opacity:0;animation:fadeUp .4s ease .1s forwards}
+.verdict-bar.clean   {background:rgba(0,221,136,.08);border-color:var(--ok);  color:var(--ok)}
+.verdict-bar.warning {background:rgba(255,170,0,.08);border-color:var(--warn);color:var(--warn)}
+.verdict-bar.critical{background:rgba(255,68,68,.08); border-color:var(--crit);color:var(--crit)}
+.verdict-bar strong{display:block;font-size:13px;margin-bottom:2px}
+.rc-card{background:var(--surface);border:1px solid var(--border);border-radius:4px;margin-bottom:10px;overflow:hidden;opacity:0;animation:fadeUp .4s ease forwards}
+.rc-header{display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;transition:background .15s;user-select:none}
+.rc-header:hover{background:var(--surface2)}
+.rc-sev{font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;padding:3px 8px;border-radius:2px;flex-shrink:0}
+.rc-sev.Critical{background:rgba(255,68,68,.15);  color:var(--crit)}
+.rc-sev.Warning {background:rgba(255,170,0,.12);  color:var(--warn)}
+.rc-sev.Info    {background:rgba(102,136,170,.12);color:var(--info)}
+.rc-headline{font-size:13px;color:#fff;flex:1;font-weight:600}
+.rc-chevron{color:var(--muted);font-size:11px;transition:transform .2s;flex-shrink:0}
+.rc-card.open .rc-chevron{transform:rotate(180deg)}
+.rc-body{display:none;padding:0 16px 16px;border-top:1px solid var(--border)}
+.rc-card.open .rc-body{display:block}
+.rc-block{margin-top:14px}
+.rc-block-title{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.rc-impact     {padding:10px 12px;background:rgba(0,200,255,.04);border-left:2px solid var(--accent2);font-size:12px;color:var(--text);line-height:1.6}
+.evidence-list{list-style:none;padding:0}
+.evidence-list li{display:flex;gap:10px;padding:4px 0;font-size:11px;border-bottom:1px solid var(--border)}
+.evidence-list li:last-child{border-bottom:none}
+.ev-note{color:var(--text)}
+.confidence-bar-wrap{margin-top:14px}
+.confidence-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.confidence-label{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.confidence-value{font-size:13px;font-weight:700;font-family:var(--display)}
+.confidence-value.high  {color:var(--ok)}
+.confidence-value.medium{color:var(--warn)}
+.confidence-value.low   {color:var(--muted)}
+.confidence-track{height:4px;background:var(--border2);border-radius:2px;overflow:hidden}
+.confidence-fill{height:100%;border-radius:2px;transition:width .6s ease}
+.confidence-fill.high  {background:var(--ok)}
+.confidence-fill.medium{background:var(--warn)}
+.confidence-fill.low   {background:var(--muted)}
+#topo-section{margin-bottom:48px}
+#topo-wrap{background:var(--surface);border:1px solid var(--border);border-radius:4px;height:320px;position:relative;overflow:hidden}
+#topo-canvas{width:100%;height:100%;display:block}
+#topo-legend{position:absolute;bottom:12px;right:16px;display:flex;gap:16px;font-size:10px;color:var(--muted)}
+.legend-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;vertical-align:middle}
+#query-section{margin-bottom:48px}
+.query-grid{display:grid;gap:10px}
+.query-row{background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:10px 14px;display:grid;grid-template-columns:80px 1fr 140px 80px 90px;gap:12px;align-items:center;font-size:12px;opacity:0;animation:fadeUp .35s ease forwards}
+.query-row.header{background:transparent;border-color:transparent;color:var(--muted);font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding-bottom:4px;animation:none;opacity:1}
+.q-txid  {font-family:var(--mono);color:var(--accent);font-size:11px}
+.q-name  {color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.q-client{color:var(--muted);font-size:11px}
+.q-type  {font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:2px 8px;border-radius:2px;text-align:center;background:rgba(0,200,255,.08);color:var(--accent)}
+.q-rcode{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:2px 8px;border-radius:2px;text-align:center}
+.q-rcode.NOERROR {background:rgba(0,221,136,.12);color:var(--ok)}
+.q-rcode.NXDOMAIN{background:rgba(255,68,68,.12); color:var(--crit)}
+.q-rcode.SERVFAIL{background:rgba(255,170,0,.12); color:var(--warn)}
+.q-rcode.TIMEOUT {background:rgba(74,96,112,.2);  color:var(--muted)}
+.q-rcode.other   {background:rgba(74,96,112,.2);  color:var(--muted)}
+.filter-bar{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.filter-btn{font-family:var(--mono);font-size:11px;padding:5px 12px;border-radius:2px;border:1px solid var(--border2);background:transparent;color:var(--muted);cursor:pointer;transition:all .15s;letter-spacing:.05em}
+.filter-btn:hover{border-color:var(--accent2);color:var(--text)}
+.filter-btn.active       {border-color:var(--accent);color:var(--accent);background:rgba(0,200,255,.06)}
+.filter-btn.f-crit.active{border-color:var(--crit);  color:var(--crit);  background:rgba(255,68,68,.06)}
+.filter-btn.f-warn.active{border-color:var(--warn);  color:var(--warn);  background:rgba(255,170,0,.06)}
+.filter-btn.f-info.active{border-color:var(--info);  color:var(--info);  background:rgba(102,136,170,.06)}
+#timeline{position:relative;padding-left:28px}
+#timeline::before{content:'';position:absolute;left:7px;top:0;bottom:0;width:1px;background:linear-gradient(to bottom,var(--border2),transparent)}
+.event-row{position:relative;margin-bottom:10px;opacity:0;transform:translateX(-8px);animation:slideIn .3s ease forwards}
+@keyframes slideIn{to{opacity:1;transform:translateX(0)}}
+.event-row::before{content:'';position:absolute;left:-24px;top:14px;width:7px;height:7px;border-radius:50%;border:1px solid var(--border2);background:var(--bg)}
+.event-row.sev-Critical::before{background:var(--crit);border-color:var(--crit);box-shadow:0 0 6px rgba(255,68,68,.5)}
+.event-row.sev-Warning::before {background:var(--warn);border-color:var(--warn)}
+.event-row.sev-Info::before    {background:var(--info);border-color:var(--info)}
+.event-card{background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:12px 14px;cursor:pointer;transition:border-color .15s,background .15s;border-left:2px solid transparent}
+.event-row.sev-Critical .event-card{border-left-color:var(--crit)}
+.event-row.sev-Warning  .event-card{border-left-color:var(--warn)}
+.event-row.sev-Info     .event-card{border-left-color:var(--info)}
+.event-card:hover{background:var(--surface2);border-color:var(--border2)}
+.event-top{display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap}
+.event-type{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:2px 8px;border-radius:2px}
+.sev-Critical .event-type{background:rgba(255,68,68,.15);  color:var(--crit)}
+.sev-Warning  .event-type{background:rgba(255,170,0,.12);  color:var(--warn)}
+.sev-Info     .event-type{background:rgba(102,136,170,.12);color:var(--info)}
+.event-ts{color:var(--muted);font-size:11px;margin-left:auto;white-space:nowrap}
+.event-summary{color:var(--text);font-size:12px;line-height:1.5}
+.event-detail{display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:12px;line-height:1.7}
+.event-detail.open{display:block}
+.event-detail .explanation{color:var(--text);margin-bottom:8px;padding:8px 10px;background:rgba(0,200,255,.04);border-left:2px solid var(--accent2);font-size:12px}
+.kv{display:grid;grid-template-columns:160px 1fr;gap:2px 12px}
+.kv dt{color:var(--muted)}
+.kv dd{color:var(--text);word-break:break-all}
+.export-bar{display:flex;gap:8px;margin-top:32px;padding-top:20px;border-top:1px solid var(--border)}
+.export-btn{font-family:var(--mono);font-size:11px;padding:7px 16px;border-radius:2px;border:1px solid var(--border2);background:transparent;color:var(--muted);cursor:pointer;transition:all .15s}
+.export-btn:hover{border-color:var(--accent);color:var(--accent)}
+.empty{text-align:center;padding:48px;color:var(--muted);font-size:12px}
+.empty strong{display:block;color:var(--ok);font-size:20px;margin-bottom:8px;font-family:var(--display)}
+footer{margin-top:64px;padding-top:24px;border-top:1px solid var(--border);color:var(--muted);font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);border:1px solid var(--accent2);padding:3px 8px;border-radius:2px}
 </style>
 </head>
 <body>
 <div id="app">
   <header>
-    <h1>dns<span>-postmortem</span></h1>
-    <span class="badge">Part 4 · Network Forensics Series</span>
+    <div class="logo">
+      <span class="logo-tag">Network Forensics · Part 4</span>
+      <h1>DNS <span>Post-Mortem</span></h1>
+    </div>
+    <div class="header-meta">Rust + WASM · Zero server<br>PCAP → events · UDP/TCP 53</div>
   </header>
 
-  <main>
-    <!-- Drop zone -->
-    <div id="dropzone">
-      <div class="drop-icon">⬡</div>
-      <p><strong>Drop a PCAP / PCAPng file</strong> or click to browse</p>
-      <p style="margin-top:6px;font-size:11px;">Supports DNS over UDP and TCP · RFC 1035 + EDNS0</p>
-      <input type="file" id="file-input" accept=".pcap,.pcapng,.cap">
+  <div id="dropzone" role="button" tabindex="0">
+    <div class="drop-icon">🔍</div>
+    <div class="drop-title">Drop your PCAP here</div>
+    <div class="drop-sub">or <strong>click to browse</strong> · .pcap · .pcapng · Ethernet link type</div>
+    <input type="file" id="file-input" accept=".pcap,.cap,.pcapng,.ntar">
+  </div>
+
+  <div id="status"><div class="spinner"></div><span id="status-text">Parsing…</span></div>
+  <div class="error-box" id="error-box"></div>
+
+  <div id="results">
+    <div class="summary-grid" id="summary-grid"></div>
+
+    <div id="rc-section">
+      <div class="section-head">
+        <span class="section-title">Root Cause Analysis</span>
+        <span class="section-count" id="rc-count"></span>
+      </div>
+      <div id="verdict-bar" class="verdict-bar"></div>
+      <div id="rc-list"></div>
     </div>
 
-    <!-- Loading -->
-    <div id="loading">
-      <div class="spinner"></div>
-      <span>Parsing packets...</span>
+    <div id="topo-section">
+      <div class="section-head">
+        <span class="section-title">Topology</span>
+        <span class="section-count" id="topo-count"></span>
+      </div>
+      <div id="topo-wrap">
+        <canvas id="topo-canvas"></canvas>
+        <div id="topo-legend">
+          <span><span class="legend-dot" style="background:#00c8ff"></span>Client</span>
+          <span><span class="legend-dot" style="background:#ffaa00"></span>Resolver</span>
+          <span><span class="legend-dot" style="background:#00dd88"></span>Domain</span>
+          <span><span class="legend-dot" style="background:#ff4444"></span>Anomaly</span>
+        </div>
+      </div>
     </div>
 
-    <!-- Results -->
-    <div id="results">
-
-      <!-- Summary -->
-      <div>
-        <div class="section-label">Summary</div>
-        <div class="cards" id="cards"></div>
+    <div id="query-section" style="display:none">
+      <div class="section-head">
+        <span class="section-title">Query Summary</span>
+        <span class="section-count" id="query-count"></span>
       </div>
-
-      <!-- Root cause -->
-      <div>
-        <div class="section-label">Root Cause Analysis</div>
-        <div id="root-cause-box">
-          <div class="rc-primary" id="rc-primary"></div>
-          <div class="rc-desc"   id="rc-desc"></div>
-          <div class="rc-chains" id="rc-chains"></div>
+      <div class="query-grid">
+        <div class="query-row header">
+          <span>TXID</span><span>Name</span><span>Client</span><span>Type</span><span>Result</span>
         </div>
+        <div id="query-rows"></div>
       </div>
+    </div>
 
-      <!-- Topology -->
-      <div>
-        <div class="section-label">Topology</div>
-        <div id="topo-wrap">
-          <canvas id="topo-canvas"></canvas>
-          <div id="topo-legend">
-            <span><span class="legend-dot" style="background:#00d4ff"></span>Client</span>
-            <span><span class="legend-dot" style="background:#f0a500"></span>Resolver</span>
-            <span><span class="legend-dot" style="background:#00e096"></span>Domain</span>
-            <span><span class="legend-dot" style="background:#ff4560"></span>Anomaly</span>
-          </div>
-        </div>
+    <div>
+      <div class="section-head">
+        <span class="section-title">Event Timeline</span>
+        <span class="section-count" id="event-count">0 events</span>
       </div>
-
-      <!-- Events -->
-      <div>
-        <div class="section-label">Events</div>
-        <div class="filter-bar">
-          <button class="filter-btn active" data-filter="all">All</button>
-          <button class="filter-btn" data-filter="Info">Info</button>
-          <button class="filter-btn warn" data-filter="Warning">Warning</button>
-          <button class="filter-btn crit" data-filter="Critical">Critical</button>
-          <span id="event-count"></span>
-          <input class="search-input" id="search-input" type="text" placeholder="Filter by name, type, IP...">
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Severity</th>
-                <th>Event</th>
-                <th>Name</th>
-                <th>Client</th>
-                <th>Server</th>
-                <th>Details</th>
-              </tr>
-            </thead>
-            <tbody id="events-tbody"></tbody>
-          </table>
-        </div>
+      <div class="filter-bar" id="filter-bar">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn f-crit" data-filter="Critical">Critical</button>
+        <button class="filter-btn f-warn" data-filter="Warning">Warning</button>
+        <button class="filter-btn f-info" data-filter="Info">Info</button>
       </div>
+      <div id="timeline"></div>
+    </div>
 
-    </div><!-- /results -->
-  </main>
+    <div class="export-bar">
+      <button class="export-btn" id="btn-export-json">&#8595; Export JSON</button>
+      <button class="export-btn" id="btn-export-txt">&#8595; Export Report (.txt)</button>
+    </div>
+  </div>
 
   <footer>
-    <span>dns-postmortem · Network Forensics Series</span>
-    <a href="https://github.com/casablanque-code" target="_blank">casablanque-code</a>
+    <span>DNS Post-Mortem · RFC 1035 / EDNS0</span>
+    <span class="badge">&#9881; WASM · Rust</span>
   </footer>
 </div>
-
 <script type="module">
-// ── WASM init ────────────────────────────────────────────────────────────────
 import init, { analyze_pcap } from './pkg/dns_parser.js';
 await init();
 
-// ── State ────────────────────────────────────────────────────────────────────
-let allEvents = [];
-let activeFilter = 'all';
-let searchQuery  = '';
-let topoData     = null;
+const TYPE_LABELS = {
+  QuerySent:'Query', ResponseReceived:'Response', QueryTimeout:'Timeout',
+  UnsolicitedResponse:'Unsolicited', TruncatedResponse:'Truncated',
+  NxdomainFlood:'NXDOMAIN Flood', SlowNxdomainProbe:'Subdomain Probe',
+  QueryRetransmit:'Retransmit', TunnelingIndicator:'Tunneling',
+  TtlAnomaly:'TTL Anomaly', DuplicateResponse:'Duplicate Resp',
+};
 
-// ── DOM refs ─────────────────────────────────────────────────────────────────
-const dropzone   = document.getElementById('dropzone');
-const fileInput  = document.getElementById('file-input');
-const loading    = document.getElementById('loading');
-const results    = document.getElementById('results');
-const tbody      = document.getElementById('events-tbody');
-const evCount    = document.getElementById('event-count');
-const searchEl   = document.getElementById('search-input');
+const EXPLANATIONS = {
+  QuerySent:(e)=>`Client ${e.client} sent a ${e.qtype} query for <b>${e.name}</b> to resolver ${e.server} (txid=0x${e.txid.toString(16).padStart(4,'0')}).`,
+  ResponseReceived:(e)=>`Resolver ${e.server} replied to ${e.client} for <b>${e.name}</b>: ${e.rcode}, ${e.answer_count} answer(s), latency ${e.latency_ms?.toFixed(1)}ms.`,
+  QueryTimeout:(e)=>`Query for <b>${e.name}</b> (${e.qtype}) from ${e.client} to ${e.server} received no response within the timeout window. Server may be unreachable or filtering this query type.`,
+  UnsolicitedResponse:(e)=>`A response for <b>${e.name}</b> arrived from ${e.src} with no matching pending query (txid=0x${e.txid.toString(16).padStart(4,'0')}). Possible spoofing or rogue resolver.`,
+  TruncatedResponse:(e)=>`Response for <b>${e.name}</b> from ${e.server} had TC bit set — answer too large for UDP. Client should retry over TCP (RFC 1035 §4.2.2).`,
+  NxdomainFlood:(e)=>`${e.count} NXDOMAIN responses in ${e.window_sec}s from ${e.client}. High-velocity NXDOMAIN pattern is characteristic of Domain Generation Algorithm (DGA) malware.`,
+  SlowNxdomainProbe:(e)=>`${e.count} NXDOMAIN responses from ${e.client} spread over the capture. Slow deliberate enumeration of non-existent subdomains — reconnaissance pattern.`,
+  QueryRetransmit:(e)=>`Query for <b>${e.name}</b> from ${e.client} retransmitted ${e.count} times (txid=0x${e.txid.toString(16).padStart(4,'0')}). Indicates packet loss or unresponsive resolver.`,
+  TunnelingIndicator:(e)=>`Query for <b>${e.name}</b> (${e.qtype}) from ${e.client} matches DNS tunneling patterns: ${e.reason==='long_label'?'unusually long subdomain labels (data encoding)':'suspicious record type used for covert channel'}.`,
+  TtlAnomaly:(e)=>`Domain <b>${e.name}</b> observed with TTL ${e.ttl_min}s–${e.ttl_max}s — ${Math.round(e.ttl_max/Math.max(e.ttl_min,1))}x variation. Fast-flux infrastructure rotates IPs rapidly to evade blocklists.`,
+  DuplicateResponse:(e)=>`Two responses for txid=0x${e.txid.toString(16).padStart(4,'0')} (${e.name}): first from ${e.first_src}, then from ${e.second_src}. One may be spoofed/injected.`,
+};
 
-// ── Drop / file ──────────────────────────────────────────────────────────────
-dropzone.addEventListener('click', () => fileInput.click());
-fileInput.addEventListener('change', e => { if (e.target.files[0]) process(e.target.files[0]); });
-
-dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
-dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
-dropzone.addEventListener('drop', e => {
-  e.preventDefault();
-  dropzone.classList.remove('drag-over');
-  if (e.dataTransfer.files[0]) process(e.dataTransfer.files[0]);
-});
-
-// ── Process file ─────────────────────────────────────────────────────────────
-async function process(file) {
-  dropzone.style.display = 'none';
-  loading.style.display  = 'flex';
-  results.style.display  = 'none';
-
-  try {
-    const buf  = await file.arrayBuffer();
-    const data = new Uint8Array(buf);
-    const report = analyze_pcap(data);
-    render(report);
-  } catch(e) {
-    alert('Failed to parse file: ' + e);
-    dropzone.style.display = 'block';
-  } finally {
-    loading.style.display = 'none';
+function eventSummary(type, ev) {
+  switch(type) {
+    case 'QuerySent':           return `<b>${ev.name}</b> · ${ev.qtype} · ${ev.client} → ${ev.server}`;
+    case 'ResponseReceived':    return `<b>${ev.name}</b> · ${ev.rcode} · ${ev.answer_count} answers · ${ev.latency_ms?.toFixed(1)}ms`;
+    case 'QueryTimeout':        return `<b>${ev.name}</b> · ${ev.qtype} · ${ev.client} → ${ev.server}`;
+    case 'UnsolicitedResponse': return `<b>${ev.name}</b> · ${ev.rcode} · from ${ev.src}`;
+    case 'TruncatedResponse':   return `<b>${ev.name}</b> · TC bit set · ${ev.client} ← ${ev.server}`;
+    case 'NxdomainFlood':       return `<b>${ev.count}</b> NXDOMAIN in ${ev.window_sec}s · client ${ev.client}`;
+    case 'SlowNxdomainProbe':   return `<b>${ev.count}</b> NXDOMAIN total · client ${ev.client}`;
+    case 'QueryRetransmit':     return `<b>${ev.name}</b> · ${ev.count} retransmits · ${ev.client}`;
+    case 'TunnelingIndicator':  return `<b>${ev.name}</b> · ${ev.qtype} · ${ev.reason} · ${ev.client}`;
+    case 'TtlAnomaly':          return `<b>${ev.name}</b> · TTL ${ev.ttl_min}s–${ev.ttl_max}s`;
+    case 'DuplicateResponse':   return `<b>${ev.name}</b> · ${ev.first_src} vs <b>${ev.second_src}</b>`;
+    default: return JSON.stringify(ev);
   }
 }
 
-// ── Render ───────────────────────────────────────────────────────────────────
-function render(report) {
-  allEvents = report.events || [];
-  renderCards(report);
-  renderRootCause(report.root_cause);
-  renderTopology(report.events);
-  renderEvents();
-  results.style.display = 'flex';
+function formatTs(ts, base) {
+  const rel = (ts - base).toFixed(3);
+  const abs = new Date(ts * 1000).toISOString().replace('T',' ').replace('Z','');
+  return `+${rel}s · ${abs}`;
 }
 
-// ── Cards ────────────────────────────────────────────────────────────────────
-function renderCards(r) {
+function renderKV(ev) {
+  const entries = Object.entries(ev).filter(([k]) => k !== 'type');
+  if (!entries.length) return '';
+  return `<dl class="kv">${entries.map(([k,v]) => {
+    const val = Array.isArray(v) ? v.join(', ') : v;
+    return `<dt>${k}</dt><dd>${val}</dd>`;
+  }).join('')}</dl>`;
+}
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function renderSummary(r) {
   const s = r.summary;
-  const dur = r.duration_sec >= 60
-    ? `${(r.duration_sec/60).toFixed(1)}m`
-    : `${r.duration_sec.toFixed(1)}s`;
-
+  const dur = r.duration_sec < 60 ? `${r.duration_sec.toFixed(1)}s` : `${(r.duration_sec/60).toFixed(1)}m`;
   const cards = [
-    { label: 'Total Packets',  value: r.total_packets,       cls: '' },
-    { label: 'DNS Packets',    value: r.dns_packets,          cls: 'accent' },
-    { label: 'Queries',        value: s.total_queries,        cls: '' },
-    { label: 'Responses',      value: s.total_responses,      cls: '' },
-    { label: 'NXDOMAIN',       value: s.nxdomain_count,       cls: s.nxdomain_count > 10 ? 'crit' : s.nxdomain_count > 2 ? 'warn' : '' },
-    { label: 'SERVFAIL',       value: s.servfail_count,       cls: s.servfail_count > 0 ? 'warn' : '' },
-    { label: 'Timeouts',       value: s.timeout_count,        cls: s.timeout_count > 0 ? 'warn' : '' },
-    { label: 'Anomalies',      value: s.anomalies,            cls: s.anomalies > 0 ? 'crit' : 'ok' },
-    { label: 'Unique Clients', value: s.unique_clients,       cls: '' },
-    { label: 'Unique Names',   value: s.unique_names,         cls: '' },
-    { label: 'Duration',       value: dur,                    cls: '' },
+    {label:'DNS Packets',  value:r.dns_packets,       sub:`of ${r.total_packets} total`, cls:'info'},
+    {label:'Duration',     value:dur,                  sub:'capture window',              cls:'info'},
+    {label:'Clients',      value:s.unique_clients,     sub:'unique IPs',                  cls:'info'},
+    {label:'Queries',      value:s.total_queries,      sub:'sent',                        cls:'info'},
+    {label:'Responses',    value:s.total_responses,    sub:'received',     cls:s.total_responses>0?'ok':'warn'},
+    {label:'NXDOMAIN',     value:s.nxdomain_count,     sub:'not found',    cls:s.nxdomain_count>10?'crit':s.nxdomain_count>2?'warn':'ok'},
+    {label:'SERVFAIL',     value:s.servfail_count,     sub:'server fail',  cls:s.servfail_count>0?'warn':'ok'},
+    {label:'Timeouts',     value:s.timeout_count,      sub:'no response',  cls:s.timeout_count>0?'warn':'ok'},
+    {label:'Anomalies',    value:s.anomalies,          sub:'warn+crit',    cls:s.anomalies>0?'crit':'ok'},
+    {label:'Unique Names', value:s.unique_names,       sub:'domains',                     cls:'info'},
   ];
-
-  document.getElementById('cards').innerHTML = cards.map(c => `
-    <div class="card">
-      <div class="card-label">${c.label}</div>
-      <div class="card-value ${c.cls}">${c.value}</div>
-    </div>
-  `).join('');
+  document.getElementById('summary-grid').innerHTML = cards.map((c,i) =>
+    `<div class="stat-card ${c.cls}" style="animation-delay:${i*50}ms">
+      <div class="stat-label">${c.label}</div>
+      <div class="stat-value">${c.value}</div>
+      <div class="stat-sub">${c.sub}</div>
+    </div>`).join('');
 }
 
-// ── Root cause ───────────────────────────────────────────────────────────────
 function renderRootCause(rc) {
-  const box = document.getElementById('root-cause-box');
   const hasCrit = rc.has_critical;
   const hasWarn = rc.chains && rc.chains.some(c => c.severity === 'Warning');
-
-  box.className = hasCrit ? 'critical' : hasWarn ? 'warning' : 'clean';
-
   const cls = hasCrit ? 'critical' : hasWarn ? 'warning' : 'clean';
-  document.getElementById('rc-primary').className = `rc-primary ${cls}`;
-  document.getElementById('rc-primary').textContent = rc.primary;
-  document.getElementById('rc-desc').textContent = rc.primary_description;
-
-  const chainsEl = document.getElementById('rc-chains');
-  if (!rc.chains || rc.chains.length === 0) {
-    chainsEl.innerHTML = '';
-    return;
-  }
-
-  chainsEl.innerHTML = rc.chains.map(chain => `
-    <div class="rc-chain">
-      <div class="rc-chain-header">
-        <span class="rc-chain-kind">${chain.kind}</span>
-        <span class="sev-badge sev-${chain.severity}">${chain.severity}</span>
+  const vbar = document.getElementById('verdict-bar');
+  vbar.className = `verdict-bar ${cls}`;
+  vbar.innerHTML = `<strong>${hasCrit ? '&#x2717; Critical anomalies detected' : hasWarn ? '&#x26A0; Warnings detected' : '&#x2713; Clean'}</strong>${escHtml(rc.primary_description)}`;
+  const chains = rc.chains || [];
+  document.getElementById('rc-count').textContent = chains.length ? `${chains.length} issue${chains.length!==1?'s':''}` : 'clean';
+  document.getElementById('rc-list').innerHTML = chains.map((chain, i) => {
+    const conf = chain.severity==='Critical'?90:chain.severity==='Warning'?70:50;
+    const confCls = conf>=85?'high':conf>=60?'medium':'low';
+    const confLabel = conf>=85?'High confidence':conf>=60?'Medium confidence':'Low confidence';
+    const evidenceHtml = chain.evidence_notes?.length
+      ? `<div class="rc-block"><div class="rc-block-title">Evidence</div>
+         <ul class="evidence-list">${chain.evidence_notes.map(n =>
+           `<li><span class="ev-note">&#x2192; ${escHtml(n)}</span></li>`).join('')}</ul></div>`
+      : '';
+    return `<div class="rc-card" style="animation-delay:${i*80}ms">
+      <div class="rc-header" onclick="toggleRc(this)">
+        <span class="rc-sev ${chain.severity}">${chain.severity}</span>
+        <span class="rc-headline">${escHtml(chain.kind)}</span>
+        <span class="rc-chevron">&#x25BC;</span>
       </div>
-      <ul class="rc-notes">
-        ${chain.evidence_notes.slice(0,5).map(n => `<li>${escHtml(n)}</li>`).join('')}
-      </ul>
-    </div>
-  `).join('');
+      <div class="rc-body">
+        <div class="confidence-bar-wrap">
+          <div class="confidence-header">
+            <span class="confidence-label">Detection Confidence</span>
+            <span class="confidence-value ${confCls}">${conf}% — ${confLabel}</span>
+          </div>
+          <div class="confidence-track"><div class="confidence-fill ${confCls}" style="width:${conf}%"></div></div>
+        </div>
+        <div class="rc-block"><div class="rc-block-title">Description</div>
+          <div class="rc-impact">${escHtml(chain.description)}</div></div>
+        ${evidenceHtml}
+      </div>
+    </div>`;
+  }).join('');
+  const first = document.querySelector('.rc-card');
+  if (first && chains[0]?.severity !== 'Info') first.classList.add('open');
 }
 
-// ── Topology (canvas force-directed) ─────────────────────────────────────────
+window.toggleRc = (hdr) => hdr.closest('.rc-card').classList.toggle('open');
+
 function renderTopology(events) {
   const canvas = document.getElementById('topo-canvas');
-  const wrap   = document.getElementById('topo-wrap');
-  canvas.width  = wrap.clientWidth;
-  canvas.height = wrap.clientHeight;
+  const wrap = document.getElementById('topo-wrap');
+  canvas.width = wrap.clientWidth; canvas.height = wrap.clientHeight;
   const ctx = canvas.getContext('2d');
-
-  // Собираем узлы из событий
-  const clients   = new Set();
-  const resolvers = new Set();
-  const domains   = new Set();
-  const anomalyClients = new Set();
-  const links = [];
-
+  const W = canvas.width, H = canvas.height;
+  const clients=new Set(), resolvers=new Set(), domains=new Set(), anomalyNodes=new Set();
+  const links=[];
   for (const ev of events) {
     const t = ev.event.type;
-    if (t === 'QuerySent') {
-      clients.add(ev.event.client);
-      resolvers.add(ev.event.server);
+    if (t==='QuerySent') {
+      clients.add(ev.event.client); resolvers.add(ev.event.server);
       if (ev.event.name) domains.add(ev.event.name);
-      links.push({ a: ev.event.client, b: ev.event.server });
-      if (ev.event.name) links.push({ a: ev.event.server, b: ev.event.name });
+      links.push({a:ev.event.client,b:ev.event.server});
+      if (ev.event.name) links.push({a:ev.event.server,b:ev.event.name});
     }
-    if (t === 'TunnelingIndicator' || t === 'NxdomainFlood' || t === 'DuplicateResponse') {
-      if (ev.event.client) anomalyClients.add(ev.event.client);
+    if (['TunnelingIndicator','NxdomainFlood','DuplicateResponse','UnsolicitedResponse'].includes(t)) {
+      if (ev.event.client) anomalyNodes.add(ev.event.client);
+      if (ev.event.src)    anomalyNodes.add(ev.event.src);
     }
   }
-
-  // Собираем уникальные узлы
-  const nodes = [];
-  const nodeMap = {};
-  const W = canvas.width, H = canvas.height;
-
+  const nodes=[], nodeMap={};
   function addNode(id, kind) {
-    if (nodeMap[id] !== undefined) return;
-    nodeMap[id] = nodes.length;
-    // Начальные позиции по кольцу
-    const angle = Math.random() * Math.PI * 2;
-    const r = 80 + Math.random() * 100;
-    nodes.push({
-      id, kind,
-      x: W/2 + Math.cos(angle) * r,
-      y: H/2 + Math.sin(angle) * r,
-      vx: 0, vy: 0,
-      anomaly: anomalyClients.has(id),
-    });
+    if (nodeMap[id]!==undefined) return;
+    nodeMap[id]=nodes.length;
+    const a=Math.random()*Math.PI*2, r=60+Math.random()*120;
+    nodes.push({id,kind,x:W/2+Math.cos(a)*r,y:H/2+Math.sin(a)*r,vx:0,vy:0,anomaly:anomalyNodes.has(id)});
   }
-
-  // Клиенты в центре
-  for (const c of clients) addNode(c, 'client');
-  for (const r of resolvers) addNode(r, 'resolver');
-  // Домены — лимит для читаемости
-  const domainArr = [...domains].slice(0, 20);
-  for (const d of domainArr) addNode(d, 'domain');
-
-  // Unique links
-  const edgeSet = new Set();
-  const edges = [];
+  for (const c of clients)              addNode(c,'client');
+  for (const r of resolvers)            addNode(r,'resolver');
+  for (const d of [...domains].slice(0,20)) addNode(d,'domain');
+  const edgeSet=new Set(), edges=[];
   for (const l of links) {
-    if (nodeMap[l.a] === undefined || nodeMap[l.b] === undefined) continue;
-    const key = `${l.a}|${l.b}`;
-    if (!edgeSet.has(key)) { edgeSet.add(key); edges.push([nodeMap[l.a], nodeMap[l.b]]); }
+    if (nodeMap[l.a]===undefined||nodeMap[l.b]===undefined) continue;
+    const key=`${l.a}|${l.b}`;
+    if (!edgeSet.has(key)){edgeSet.add(key);edges.push([nodeMap[l.a],nodeMap[l.b]]);}
   }
-
-  if (nodes.length === 0) {
-    ctx.fillStyle = '#555f6e';
-    ctx.font = '12px JetBrains Mono';
-    ctx.textAlign = 'center';
-    ctx.fillText('No DNS topology data', W/2, H/2);
-    return;
-  }
-
-  // Force simulation
-  const K_REPEL  = 4000;
-  const K_SPRING = 0.04;
-  const REST_LEN = 120;
-  const DAMP     = 0.85;
-
-  function simulate(steps) {
-    for (let s = 0; s < steps; s++) {
-      // Repulsion
-      for (let i = 0; i < nodes.length; i++) {
-        for (let j = i + 1; j < nodes.length; j++) {
-          const dx = nodes[i].x - nodes[j].x;
-          const dy = nodes[i].y - nodes[j].y;
-          const d2 = dx*dx + dy*dy + 0.01;
-          const f  = K_REPEL / d2;
-          nodes[i].vx += dx * f; nodes[i].vy += dy * f;
-          nodes[j].vx -= dx * f; nodes[j].vy -= dy * f;
-        }
-      }
-      // Spring
-      for (const [ai, bi] of edges) {
-        const dx = nodes[bi].x - nodes[ai].x;
-        const dy = nodes[bi].y - nodes[ai].y;
-        const d  = Math.sqrt(dx*dx + dy*dy) + 0.01;
-        const f  = K_SPRING * (d - REST_LEN);
-        const fx = dx/d * f; const fy = dy/d * f;
-        nodes[ai].vx += fx; nodes[ai].vy += fy;
-        nodes[bi].vx -= fx; nodes[bi].vy -= fy;
-      }
-      // Center gravity
-      for (const n of nodes) {
-        n.vx += (W/2 - n.x) * 0.005;
-        n.vy += (H/2 - n.y) * 0.005;
-      }
-      // Integrate + damp + clamp
-      for (const n of nodes) {
-        n.vx *= DAMP; n.vy *= DAMP;
-        n.x = Math.max(40, Math.min(W-40, n.x + n.vx));
-        n.y = Math.max(30, Math.min(H-30, n.y + n.vy));
-      }
+  document.getElementById('topo-count').textContent=
+    `${clients.size} client${clients.size!==1?'s':''} · ${resolvers.size} resolver${resolvers.size!==1?'s':''} · ${Math.min(domains.size,20)} domains`;
+  if (!nodes.length){ctx.fillStyle='#4a6070';ctx.font='12px JetBrains Mono';ctx.textAlign='center';ctx.fillText('No topology data',W/2,H/2);return;}
+  for (let s=0;s<220;s++){
+    for (let i=0;i<nodes.length;i++) for (let j=i+1;j<nodes.length;j++){
+      const dx=nodes[i].x-nodes[j].x,dy=nodes[i].y-nodes[j].y,d2=dx*dx+dy*dy+.01,f=4000/d2;
+      nodes[i].vx+=dx*f;nodes[i].vy+=dy*f;nodes[j].vx-=dx*f;nodes[j].vy-=dy*f;
+    }
+    for (const [ai,bi] of edges){
+      const dx=nodes[bi].x-nodes[ai].x,dy=nodes[bi].y-nodes[ai].y,d=Math.sqrt(dx*dx+dy*dy)+.01,f=.04*(d-120);
+      const fx=dx/d*f,fy=dy/d*f;nodes[ai].vx+=fx;nodes[ai].vy+=fy;nodes[bi].vx-=fx;nodes[bi].vy-=fy;
+    }
+    for (const n of nodes){
+      n.vx+=(W/2-n.x)*.005;n.vy+=(H/2-n.y)*.005;n.vx*=.85;n.vy*=.85;
+      n.x=Math.max(40,Math.min(W-40,n.x+n.vx));n.y=Math.max(30,Math.min(H-30,n.y+n.vy));
     }
   }
-
-  simulate(200);
-
-  function draw() {
-    ctx.clearRect(0, 0, W, H);
-
-    // Edges
-    ctx.lineWidth = 1;
-    for (const [ai, bi] of edges) {
-      const a = nodes[ai], b = nodes[bi];
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.strokeStyle = '#1e2229';
-      ctx.stroke();
-    }
-
-    // Nodes
-    for (const n of nodes) {
-      const r = n.kind === 'resolver' ? 10 : n.kind === 'client' ? 8 : 6;
-      const color = n.anomaly ? '#ff4560'
-        : n.kind === 'client'   ? '#00d4ff'
-        : n.kind === 'resolver' ? '#f0a500'
-        : '#00e096';
-
-      // Glow for anomaly
-      if (n.anomaly) {
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, r + 6, 0, Math.PI*2);
-        ctx.fillStyle = 'rgba(255,69,96,0.15)';
-        ctx.fill();
-      }
-
-      ctx.beginPath();
-      ctx.arc(n.x, n.y, r, 0, Math.PI*2);
-      ctx.fillStyle = color;
-      ctx.fill();
-
-      // Label
-      ctx.fillStyle = n.kind === 'domain' ? '#555f6e' : '#c8d0dc';
-      ctx.font = n.kind === 'domain' ? '9px JetBrains Mono' : '10px JetBrains Mono';
-      ctx.textAlign = 'center';
-      const label = n.id.length > 24 ? n.id.slice(0,22) + '…' : n.id;
-      ctx.fillText(label, n.x, n.y + r + 12);
-    }
+  ctx.clearRect(0,0,W,H);
+  ctx.lineWidth=1;
+  for (const [ai,bi] of edges){
+    ctx.beginPath();ctx.moveTo(nodes[ai].x,nodes[ai].y);ctx.lineTo(nodes[bi].x,nodes[bi].y);
+    ctx.strokeStyle='#1a2530';ctx.stroke();
   }
-
-  draw();
+  for (const n of nodes){
+    const r=n.kind==='resolver'?10:n.kind==='client'?8:5;
+    const color=n.anomaly?'#ff4444':n.kind==='client'?'#00c8ff':n.kind==='resolver'?'#ffaa00':'#00dd88';
+    if (n.anomaly){ctx.beginPath();ctx.arc(n.x,n.y,r+6,0,Math.PI*2);ctx.fillStyle='rgba(255,68,68,.15)';ctx.fill();}
+    ctx.beginPath();ctx.arc(n.x,n.y,r,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();
+    ctx.fillStyle=n.kind==='domain'?'#4a6070':'#c8d8e8';
+    ctx.font=n.kind==='domain'?'9px JetBrains Mono':'10px JetBrains Mono';
+    ctx.textAlign='center';
+    const label=n.id.length>22?n.id.slice(0,20)+'…':n.id;
+    ctx.fillText(label,n.x,n.y+r+12);
+  }
 }
 
-// ── Events table ─────────────────────────────────────────────────────────────
-function renderEvents() {
-  const filtered = allEvents.filter(ev => {
-    if (activeFilter !== 'all' && ev.severity !== activeFilter) return false;
-    if (searchQuery) {
-      const hay = JSON.stringify(ev.event).toLowerCase();
-      if (!hay.includes(searchQuery)) return false;
-    }
-    return true;
-  });
-
-  evCount.textContent = `${filtered.length} / ${allEvents.length} events`;
-
-  if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" class="no-events">No events match filter</td></tr>`;
-    return;
+function renderQueryTable(events) {
+  const pairs=new Map();
+  for (const te of events){
+    const ev=te.event;
+    if (ev.type==='QuerySent'){const key=`${ev.txid}|${ev.client}`;pairs.set(key,{txid:ev.txid,name:ev.name||'',client:ev.client,qtype:ev.qtype,rcode:'TIMEOUT'});}
+    if (ev.type==='ResponseReceived'){const key=`${ev.txid}|${ev.client}`;if(pairs.has(key))pairs.get(key).rcode=ev.rcode;}
   }
-
-  tbody.innerHTML = filtered.slice(0, 500).map(ev => {
-    const t   = ev.event.type;
-    const ts  = ev.ts.toFixed(3);
-    const sev = ev.severity;
-    const name   = ev.event.name   || ev.event.names?.join(', ') || '—';
-    const client = ev.event.client || ev.event.src || '—';
-    const server = ev.event.server || '—';
-    const detail = eventDetail(ev.event);
-
-    return `<tr>
-      <td class="ts">${ts}</td>
-      <td><span class="sev-badge sev-${sev}">${sev}</span></td>
-      <td class="muted">${escHtml(t)}</td>
-      <td class="name" title="${escHtml(name)}">${escHtml(truncate(name, 40))}</td>
-      <td class="muted">${escHtml(client)}</td>
-      <td class="muted">${escHtml(server)}</td>
-      <td class="muted" title="${escHtml(detail)}">${escHtml(truncate(detail, 60))}</td>
-    </tr>`;
+  const list=[...pairs.values()];
+  if (!list.length) return;
+  document.getElementById('query-section').style.display='block';
+  document.getElementById('query-count').textContent=`${list.length} transaction${list.length!==1?'s':''}`;
+  document.getElementById('query-rows').innerHTML=list.slice(0,100).map((q,i)=>{
+    const rc=q.rcode==='NOERROR'?'NOERROR':q.rcode==='NXDOMAIN'?'NXDOMAIN':q.rcode==='SERVFAIL'?'SERVFAIL':q.rcode==='TIMEOUT'?'TIMEOUT':'other';
+    return `<div class="query-row" style="animation-delay:${i*20}ms">
+      <span class="q-txid">0x${q.txid.toString(16).padStart(4,'0')}</span>
+      <span class="q-name" title="${escHtml(q.name)}">${escHtml(q.name)}</span>
+      <span class="q-client">${escHtml(q.client)}</span>
+      <span class="q-type">${escHtml(q.qtype)}</span>
+      <span class="q-rcode ${rc}">${escHtml(q.rcode)}</span>
+    </div>`;
   }).join('');
 }
 
-function eventDetail(ev) {
-  switch(ev.type) {
-    case 'QuerySent':
-      return `txid=${ev.txid} qtype=${ev.qtype}`;
-    case 'ResponseReceived':
-      return `txid=${ev.txid} rcode=${ev.rcode} answers=${ev.answer_count} latency=${ev.latency_ms?.toFixed(1)}ms`;
-    case 'QueryTimeout':
-      return `txid=${ev.txid} qtype=${ev.qtype}`;
-    case 'UnsolicitedResponse':
-      return `txid=${ev.txid} rcode=${ev.rcode} src=${ev.src}`;
-    case 'TruncatedResponse':
-      return `txid=${ev.txid} → retry over TCP`;
-    case 'NxdomainFlood':
-      return `${ev.count} NXDOMAIN in ${ev.window_sec}s`;
-    case 'SlowNxdomainProbe':
-      return `${ev.count} NXDOMAIN total`;
-    case 'QueryRetransmit':
-      return `txid=${ev.txid} retransmits=${ev.count}`;
-    case 'TunnelingIndicator':
-      return `reason=${ev.reason} qtype=${ev.qtype}`;
-    case 'TtlAnomaly':
-      return `ttl_min=${ev.ttl_min}s ttl_max=${ev.ttl_max}s`;
-    case 'DuplicateResponse':
-      return `txid=${ev.txid} src1=${ev.first_src} src2=${ev.second_src}`;
-    default:
-      return '';
+let currentFilter='all', allEvents=[], fullReport=null, baseTs=0;
+
+function renderTimeline(events) {
+  const visible=currentFilter==='all'?events:events.filter(e=>e.severity===currentFilter);
+  document.getElementById('event-count').textContent=`${visible.length} of ${events.length} events`;
+  if (!visible.length){document.getElementById('timeline').innerHTML=`<div class="empty"><strong>&#x2713; All clear</strong>No events matching this filter.</div>`;return;}
+  document.getElementById('timeline').innerHTML=visible.slice(0,500).map((te,i)=>{
+    const evType=te.event.type, exp=EXPLANATIONS[evType];
+    return `<div class="event-row sev-${te.severity}" style="animation-delay:${Math.min(i*20,400)}ms">
+      <div class="event-card" onclick="toggleDetail(this)">
+        <div class="event-top">
+          <span class="event-type">${TYPE_LABELS[evType]??evType}</span>
+          <span class="event-ts">${formatTs(te.ts,baseTs)}</span>
+        </div>
+        <div class="event-summary">${eventSummary(evType,te.event)}</div>
+        <div class="event-detail">
+          ${exp?`<div class="explanation">${exp(te.event)}</div>`:''}
+          ${renderKV(te.event)}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+window.toggleDetail=(card)=>card.querySelector('.event-detail').classList.toggle('open');
+
+function dl(blob,name){const a=Object.assign(document.createElement('a'),{href:URL.createObjectURL(blob),download:name});a.click();URL.revokeObjectURL(a.href);}
+
+document.getElementById('btn-export-json').addEventListener('click',()=>{
+  if (!fullReport) return;
+  dl(new Blob([JSON.stringify(fullReport,null,2)],{type:'application/json'}),'dns-postmortem.json');
+});
+
+document.getElementById('btn-export-txt').addEventListener('click',()=>{
+  if (!fullReport) return;
+  const rc=fullReport.root_cause, s=fullReport.summary;
+  const lines=[
+    '═══════════════════════════════════════════════════',
+    '  DNS POST-MORTEM REPORT', `  ${new Date().toISOString()}`,
+    '═══════════════════════════════════════════════════','',
+    'SUMMARY',
+    `  DNS Packets    : ${fullReport.dns_packets} of ${fullReport.total_packets}`,
+    `  Duration       : ${fullReport.duration_sec.toFixed(1)}s`,
+    `  Clients        : ${s.unique_clients}`,
+    `  Unique Names   : ${s.unique_names}`,
+    `  Queries        : ${s.total_queries}`,
+    `  Responses      : ${s.total_responses}`,
+    `  NXDOMAIN       : ${s.nxdomain_count}`,
+    `  SERVFAIL       : ${s.servfail_count}`,
+    `  Timeouts       : ${s.timeout_count}`,
+    `  Anomalies      : ${s.anomalies}`,'',
+    'VERDICT', `  ${rc.primary}: ${rc.primary_description}`,'',
+    'ROOT CAUSE CHAINS',
+    ...(rc.chains||[]).flatMap(c=>['',`  [${c.severity.toUpperCase()}] ${c.kind}`,`  ${c.description}`,...(c.evidence_notes||[]).map(n=>`    -> ${n}`)]),
+    '','EVENT TIMELINE',
+    ...fullReport.events.map(te=>{
+      const rel=(te.ts-baseTs).toFixed(3).padStart(10);
+      return `  +${rel}s  [${te.severity.padEnd(8)}]  ${TYPE_LABELS[te.event.type]??te.event.type}  ${te.event.name||te.event.client||''}`;
+    }),'',
+    '═══════════════════════════════════════════════════',
+  ];
+  dl(new Blob([lines.join('\n')],{type:'text/plain'}),'dns-postmortem.txt');
+});
+
+document.getElementById('filter-bar').addEventListener('click',e=>{
+  const btn=e.target.closest('[data-filter]');
+  if (!btn) return;
+  currentFilter=btn.dataset.filter;
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTimeline(allEvents);
+});
+
+async function processFile(file) {
+  const statusEl=document.getElementById('status');
+  const errorBox=document.getElementById('error-box');
+  const results=document.getElementById('results');
+  errorBox.classList.remove('visible');
+  results.classList.remove('visible');
+  statusEl.classList.add('visible');
+  document.getElementById('status-text').textContent=`Reading ${file.name} (${(file.size/1024).toFixed(0)} KB)…`;
+  document.getElementById('query-section').style.display='none';
+  try {
+    const buf=await file.arrayBuffer();
+    document.getElementById('status-text').textContent='Running WASM analyzer…';
+    await new Promise(r=>setTimeout(r,20));
+    const report=analyze_pcap(new Uint8Array(buf));
+    fullReport=report; allEvents=report.events; baseTs=report.events[0]?.ts??0;
+    statusEl.classList.remove('visible');
+    renderSummary(report);
+    if (report.dns_packets===0) {
+      document.getElementById('rc-section').innerHTML=`<div class="verdict-bar warning" style="opacity:1"><strong>&#x26A0; No DNS traffic found</strong>This capture contains no DNS packets (UDP/TCP port 53). Make sure you captured on the right interface.</div>`;
+      document.getElementById('timeline').innerHTML='<div class="empty"><strong>No DNS packets</strong>Nothing to analyze.</div>';
+      document.getElementById('event-count').textContent='0 events';
+      results.classList.add('visible'); return;
+    }
+    renderRootCause(report.root_cause);
+    renderTopology(report.events);
+    renderQueryTable(report.events);
+    renderTimeline(allEvents);
+    results.classList.add('visible');
+  } catch(err) {
+    statusEl.classList.remove('visible');
+    errorBox.textContent=`Error: ${err}`;
+    errorBox.classList.add('visible');
   }
 }
 
-// ── Filters ──────────────────────────────────────────────────────────────────
-document.querySelectorAll('.filter-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    activeFilter = btn.dataset.filter;
-    renderEvents();
-  });
-});
-
-searchEl.addEventListener('input', () => {
-  searchQuery = searchEl.value.toLowerCase().trim();
-  renderEvents();
-});
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-function escHtml(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function truncate(s, n) {
-  return s.length > n ? s.slice(0, n) + '…' : s;
-}
+const dz=document.getElementById('dropzone'), fi=document.getElementById('file-input');
+dz.addEventListener('click',()=>fi.click());
+dz.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')fi.click();});
+fi.addEventListener('change',e=>{if(e.target.files[0])processFile(e.target.files[0]);});
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag-over');});
+dz.addEventListener('dragleave',()=>dz.classList.remove('drag-over'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag-over');if(e.dataTransfer.files[0])processFile(e.dataTransfer.files[0]);});
 </script>
 </body>
 </html>
