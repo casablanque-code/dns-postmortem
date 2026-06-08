@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dns-postmortem</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;600;800&display=swap');
+
+  :root {
+    --bg:        #0a0c0f;
+    --surface:   #111318;
+    --border:    #1e2229;
+    --border2:   #2a3040;
+    --text:      #c8d0dc;
+    --muted:     #555f6e;
+    --accent:    #00d4ff;
+    --accent2:   #0088bb;
+    --warn:      #f0a500;
+    --crit:      #ff4560;
+    --ok:        #00e096;
+    --mono:      'JetBrains Mono', monospace;
+    --sans:      'Syne', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  /* ── Layout ── */
+  #app { display: flex; flex-direction: column; min-height: 100vh; }
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  header h1 {
+    font-family: var(--sans);
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: #fff;
+  }
+
+  header h1 span { color: var(--accent); }
+
+  .badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 2px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    background: var(--border2);
+    color: var(--muted);
+  }
+
+  main { flex: 1; padding: 24px 32px; display: flex; flex-direction: column; gap: 24px; }
+
+  /* ── Drop zone ── */
+  #dropzone {
+    border: 1.5px dashed var(--border2);
+    border-radius: 4px;
+    padding: 48px 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    background: var(--surface);
+  }
+
+  #dropzone:hover, #dropzone.drag-over {
+    border-color: var(--accent);
+    background: rgba(0, 212, 255, 0.04);
+  }
+
+  #dropzone .drop-icon {
+    font-size: 32px;
+    margin-bottom: 12px;
+    opacity: 0.5;
+  }
+
+  #dropzone p { color: var(--muted); }
+  #dropzone p strong { color: var(--accent); }
+
+  #file-input { display: none; }
+
+  /* ── Loading ── */
+  #loading {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 32px;
+    color: var(--muted);
+  }
+
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2px solid var(--border2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Results ── */
+  #results { display: none; flex-direction: column; gap: 24px; }
+
+  /* ── Section header ── */
+  .section-label {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  /* ── Summary cards ── */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .card-label {
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .card-value {
+    font-family: var(--sans);
+    font-size: 28px;
+    font-weight: 800;
+    color: #fff;
+    line-height: 1;
+  }
+
+  .card-value.warn  { color: var(--warn); }
+  .card-value.crit  { color: var(--crit); }
+  .card-value.ok    { color: var(--ok); }
+  .card-value.accent{ color: var(--accent); }
+
+  /* ── Root cause ── */
+  #root-cause-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px 24px;
+  }
+
+  #root-cause-box.clean   { border-color: var(--ok);   }
+  #root-cause-box.warning { border-color: var(--warn);  }
+  #root-cause-box.critical{ border-color: var(--crit);  }
+
+  .rc-primary {
+    font-family: var(--sans);
+    font-size: 16px;
+    font-weight: 800;
+    margin-bottom: 6px;
+  }
+
+  .rc-primary.clean    { color: var(--ok); }
+  .rc-primary.warning  { color: var(--warn); }
+  .rc-primary.critical { color: var(--crit); }
+
+  .rc-desc { color: var(--muted); font-size: 12px; line-height: 1.7; }
+
+  .rc-chains {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .rc-chain {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 12px 16px;
+  }
+
+  .rc-chain-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .rc-chain-kind {
+    font-weight: 700;
+    font-size: 12px;
+  }
+
+  .sev-badge {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 1px 6px;
+    border-radius: 2px;
+    text-transform: uppercase;
+  }
+
+  .sev-Info     { background: rgba(0,212,255,0.15); color: var(--accent); }
+  .sev-Warning  { background: rgba(240,165,0,0.15); color: var(--warn); }
+  .sev-Critical { background: rgba(255,69,96,0.15);  color: var(--crit); }
+
+  .rc-notes { list-style: none; }
+  .rc-notes li {
+    color: var(--muted);
+    font-size: 11px;
+    padding: 2px 0;
+  }
+  .rc-notes li::before { content: "→ "; color: var(--accent2); }
+
+  /* ── Topology ── */
+  #topo-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    height: 340px;
+    position: relative;
+  }
+
+  #topo-canvas { width: 100%; height: 100%; display: block; }
+
+  #topo-legend {
+    position: absolute;
+    bottom: 12px;
+    right: 16px;
+    display: flex;
+    gap: 16px;
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  .legend-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+
+  /* ── Events table ── */
+  .filter-bar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+    align-items: center;
+  }
+
+  .filter-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 12px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.5px;
+  }
+
+  .filter-btn:hover { border-color: var(--border2); color: var(--text); }
+  .filter-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,212,255,0.06); }
+  .filter-btn.active.warn { border-color: var(--warn); color: var(--warn); background: rgba(240,165,0,0.06); }
+  .filter-btn.active.crit { border-color: var(--crit); color: var(--crit); background: rgba(255,69,96,0.06); }
+
+  .search-input {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 2px;
+    outline: none;
+    min-width: 200px;
+    margin-left: auto;
+  }
+  .search-input:focus { border-color: var(--accent2); }
+  .search-input::placeholder { color: var(--muted); }
+
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+  }
+
+  table { width: 100%; border-collapse: collapse; }
+
+  thead th {
+    background: var(--bg);
+    text-align: left;
+    padding: 8px 14px;
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+  }
+
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: rgba(255,255,255,0.02); }
+
+  tbody td {
+    padding: 7px 14px;
+    font-size: 11px;
+    white-space: nowrap;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text);
+  }
+
+  td.ts { color: var(--muted); font-size: 10px; }
+  td.name { color: var(--accent); font-weight: 600; }
+  td.muted { color: var(--muted); }
+
+  .no-events {
+    text-align: center;
+    padding: 32px;
+    color: var(--muted);
+  }
+
+  #event-count {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  footer {
+    padding: 12px 32px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 10px;
+    letter-spacing: 0.5px;
+    display: flex;
+    gap: 16px;
+  }
+
+  footer a { color: var(--accent2); text-decoration: none; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>dns<span>-postmortem</span></h1>
+    <span class="badge">Part 4 · Network Forensics Series</span>
+  </header>
+
+  <main>
+    <!-- Drop zone -->
+    <div id="dropzone">
+      <div class="drop-icon">⬡</div>
+      <p><strong>Drop a PCAP / PCAPng file</strong> or click to browse</p>
+      <p style="margin-top:6px;font-size:11px;">Supports DNS over UDP and TCP · RFC 1035 + EDNS0</p>
+      <input type="file" id="file-input" accept=".pcap,.pcapng,.cap">
+    </div>
+
+    <!-- Loading -->
+    <div id="loading">
+      <div class="spinner"></div>
+      <span>Parsing packets...</span>
+    </div>
+
+    <!-- Results -->
+    <div id="results">
+
+      <!-- Summary -->
+      <div>
+        <div class="section-label">Summary</div>
+        <div class="cards" id="cards"></div>
+      </div>
+
+      <!-- Root cause -->
+      <div>
+        <div class="section-label">Root Cause Analysis</div>
+        <div id="root-cause-box">
+          <div class="rc-primary" id="rc-primary"></div>
+          <div class="rc-desc"   id="rc-desc"></div>
+          <div class="rc-chains" id="rc-chains"></div>
+        </div>
+      </div>
+
+      <!-- Topology -->
+      <div>
+        <div class="section-label">Topology</div>
+        <div id="topo-wrap">
+          <canvas id="topo-canvas"></canvas>
+          <div id="topo-legend">
+            <span><span class="legend-dot" style="background:#00d4ff"></span>Client</span>
+            <span><span class="legend-dot" style="background:#f0a500"></span>Resolver</span>
+            <span><span class="legend-dot" style="background:#00e096"></span>Domain</span>
+            <span><span class="legend-dot" style="background:#ff4560"></span>Anomaly</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Events -->
+      <div>
+        <div class="section-label">Events</div>
+        <div class="filter-bar">
+          <button class="filter-btn active" data-filter="all">All</button>
+          <button class="filter-btn" data-filter="Info">Info</button>
+          <button class="filter-btn warn" data-filter="Warning">Warning</button>
+          <button class="filter-btn crit" data-filter="Critical">Critical</button>
+          <span id="event-count"></span>
+          <input class="search-input" id="search-input" type="text" placeholder="Filter by name, type, IP...">
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Severity</th>
+                <th>Event</th>
+                <th>Name</th>
+                <th>Client</th>
+                <th>Server</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody id="events-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /results -->
+  </main>
+
+  <footer>
+    <span>dns-postmortem · Network Forensics Series</span>
+    <a href="https://github.com/casablanque-code" target="_blank">casablanque-code</a>
+  </footer>
+</div>
+
+<script type="module">
+// ── WASM init ────────────────────────────────────────────────────────────────
+import init, { analyze_pcap } from './pkg/dns_parser.js';
+await init();
+
+// ── State ────────────────────────────────────────────────────────────────────
+let allEvents = [];
+let activeFilter = 'all';
+let searchQuery  = '';
+let topoData     = null;
+
+// ── DOM refs ─────────────────────────────────────────────────────────────────
+const dropzone   = document.getElementById('dropzone');
+const fileInput  = document.getElementById('file-input');
+const loading    = document.getElementById('loading');
+const results    = document.getElementById('results');
+const tbody      = document.getElementById('events-tbody');
+const evCount    = document.getElementById('event-count');
+const searchEl   = document.getElementById('search-input');
+
+// ── Drop / file ──────────────────────────────────────────────────────────────
+dropzone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => { if (e.target.files[0]) process(e.target.files[0]); });
+
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) process(e.dataTransfer.files[0]);
+});
+
+// ── Process file ─────────────────────────────────────────────────────────────
+async function process(file) {
+  dropzone.style.display = 'none';
+  loading.style.display  = 'flex';
+  results.style.display  = 'none';
+
+  try {
+    const buf  = await file.arrayBuffer();
+    const data = new Uint8Array(buf);
+    const report = analyze_pcap(data);
+    render(report);
+  } catch(e) {
+    alert('Failed to parse file: ' + e);
+    dropzone.style.display = 'block';
+  } finally {
+    loading.style.display = 'none';
+  }
+}
+
+// ── Render ───────────────────────────────────────────────────────────────────
+function render(report) {
+  allEvents = report.events || [];
+  renderCards(report);
+  renderRootCause(report.root_cause);
+  renderTopology(report.events);
+  renderEvents();
+  results.style.display = 'flex';
+}
+
+// ── Cards ────────────────────────────────────────────────────────────────────
+function renderCards(r) {
+  const s = r.summary;
+  const dur = r.duration_sec >= 60
+    ? `${(r.duration_sec/60).toFixed(1)}m`
+    : `${r.duration_sec.toFixed(1)}s`;
+
+  const cards = [
+    { label: 'Total Packets',  value: r.total_packets,       cls: '' },
+    { label: 'DNS Packets',    value: r.dns_packets,          cls: 'accent' },
+    { label: 'Queries',        value: s.total_queries,        cls: '' },
+    { label: 'Responses',      value: s.total_responses,      cls: '' },
+    { label: 'NXDOMAIN',       value: s.nxdomain_count,       cls: s.nxdomain_count > 10 ? 'crit' : s.nxdomain_count > 2 ? 'warn' : '' },
+    { label: 'SERVFAIL',       value: s.servfail_count,       cls: s.servfail_count > 0 ? 'warn' : '' },
+    { label: 'Timeouts',       value: s.timeout_count,        cls: s.timeout_count > 0 ? 'warn' : '' },
+    { label: 'Anomalies',      value: s.anomalies,            cls: s.anomalies > 0 ? 'crit' : 'ok' },
+    { label: 'Unique Clients', value: s.unique_clients,       cls: '' },
+    { label: 'Unique Names',   value: s.unique_names,         cls: '' },
+    { label: 'Duration',       value: dur,                    cls: '' },
+  ];
+
+  document.getElementById('cards').innerHTML = cards.map(c => `
+    <div class="card">
+      <div class="card-label">${c.label}</div>
+      <div class="card-value ${c.cls}">${c.value}</div>
+    </div>
+  `).join('');
+}
+
+// ── Root cause ───────────────────────────────────────────────────────────────
+function renderRootCause(rc) {
+  const box = document.getElementById('root-cause-box');
+  const hasCrit = rc.has_critical;
+  const hasWarn = rc.chains && rc.chains.some(c => c.severity === 'Warning');
+
+  box.className = hasCrit ? 'critical' : hasWarn ? 'warning' : 'clean';
+
+  const cls = hasCrit ? 'critical' : hasWarn ? 'warning' : 'clean';
+  document.getElementById('rc-primary').className = `rc-primary ${cls}`;
+  document.getElementById('rc-primary').textContent = rc.primary;
+  document.getElementById('rc-desc').textContent = rc.primary_description;
+
+  const chainsEl = document.getElementById('rc-chains');
+  if (!rc.chains || rc.chains.length === 0) {
+    chainsEl.innerHTML = '';
+    return;
+  }
+
+  chainsEl.innerHTML = rc.chains.map(chain => `
+    <div class="rc-chain">
+      <div class="rc-chain-header">
+        <span class="rc-chain-kind">${chain.kind}</span>
+        <span class="sev-badge sev-${chain.severity}">${chain.severity}</span>
+      </div>
+      <ul class="rc-notes">
+        ${chain.evidence_notes.slice(0,5).map(n => `<li>${escHtml(n)}</li>`).join('')}
+      </ul>
+    </div>
+  `).join('');
+}
+
+// ── Topology (canvas force-directed) ─────────────────────────────────────────
+function renderTopology(events) {
+  const canvas = document.getElementById('topo-canvas');
+  const wrap   = document.getElementById('topo-wrap');
+  canvas.width  = wrap.clientWidth;
+  canvas.height = wrap.clientHeight;
+  const ctx = canvas.getContext('2d');
+
+  // Собираем узлы из событий
+  const clients   = new Set();
+  const resolvers = new Set();
+  const domains   = new Set();
+  const anomalyClients = new Set();
+  const links = [];
+
+  for (const ev of events) {
+    const t = ev.event.type;
+    if (t === 'QuerySent') {
+      clients.add(ev.event.client);
+      resolvers.add(ev.event.server);
+      if (ev.event.name) domains.add(ev.event.name);
+      links.push({ a: ev.event.client, b: ev.event.server });
+      if (ev.event.name) links.push({ a: ev.event.server, b: ev.event.name });
+    }
+    if (t === 'TunnelingIndicator' || t === 'NxdomainFlood' || t === 'DuplicateResponse') {
+      if (ev.event.client) anomalyClients.add(ev.event.client);
+    }
+  }
+
+  // Собираем уникальные узлы
+  const nodes = [];
+  const nodeMap = {};
+  const W = canvas.width, H = canvas.height;
+
+  function addNode(id, kind) {
+    if (nodeMap[id] !== undefined) return;
+    nodeMap[id] = nodes.length;
+    // Начальные позиции по кольцу
+    const angle = Math.random() * Math.PI * 2;
+    const r = 80 + Math.random() * 100;
+    nodes.push({
+      id, kind,
+      x: W/2 + Math.cos(angle) * r,
+      y: H/2 + Math.sin(angle) * r,
+      vx: 0, vy: 0,
+      anomaly: anomalyClients.has(id),
+    });
+  }
+
+  // Клиенты в центре
+  for (const c of clients) addNode(c, 'client');
+  for (const r of resolvers) addNode(r, 'resolver');
+  // Домены — лимит для читаемости
+  const domainArr = [...domains].slice(0, 20);
+  for (const d of domainArr) addNode(d, 'domain');
+
+  // Unique links
+  const edgeSet = new Set();
+  const edges = [];
+  for (const l of links) {
+    if (nodeMap[l.a] === undefined || nodeMap[l.b] === undefined) continue;
+    const key = `${l.a}|${l.b}`;
+    if (!edgeSet.has(key)) { edgeSet.add(key); edges.push([nodeMap[l.a], nodeMap[l.b]]); }
+  }
+
+  if (nodes.length === 0) {
+    ctx.fillStyle = '#555f6e';
+    ctx.font = '12px JetBrains Mono';
+    ctx.textAlign = 'center';
+    ctx.fillText('No DNS topology data', W/2, H/2);
+    return;
+  }
+
+  // Force simulation
+  const K_REPEL  = 4000;
+  const K_SPRING = 0.04;
+  const REST_LEN = 120;
+  const DAMP     = 0.85;
+
+  function simulate(steps) {
+    for (let s = 0; s < steps; s++) {
+      // Repulsion
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const dx = nodes[i].x - nodes[j].x;
+          const dy = nodes[i].y - nodes[j].y;
+          const d2 = dx*dx + dy*dy + 0.01;
+          const f  = K_REPEL / d2;
+          nodes[i].vx += dx * f; nodes[i].vy += dy * f;
+          nodes[j].vx -= dx * f; nodes[j].vy -= dy * f;
+        }
+      }
+      // Spring
+      for (const [ai, bi] of edges) {
+        const dx = nodes[bi].x - nodes[ai].x;
+        const dy = nodes[bi].y - nodes[ai].y;
+        const d  = Math.sqrt(dx*dx + dy*dy) + 0.01;
+        const f  = K_SPRING * (d - REST_LEN);
+        const fx = dx/d * f; const fy = dy/d * f;
+        nodes[ai].vx += fx; nodes[ai].vy += fy;
+        nodes[bi].vx -= fx; nodes[bi].vy -= fy;
+      }
+      // Center gravity
+      for (const n of nodes) {
+        n.vx += (W/2 - n.x) * 0.005;
+        n.vy += (H/2 - n.y) * 0.005;
+      }
+      // Integrate + damp + clamp
+      for (const n of nodes) {
+        n.vx *= DAMP; n.vy *= DAMP;
+        n.x = Math.max(40, Math.min(W-40, n.x + n.vx));
+        n.y = Math.max(30, Math.min(H-30, n.y + n.vy));
+      }
+    }
+  }
+
+  simulate(200);
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+
+    // Edges
+    ctx.lineWidth = 1;
+    for (const [ai, bi] of edges) {
+      const a = nodes[ai], b = nodes[bi];
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.strokeStyle = '#1e2229';
+      ctx.stroke();
+    }
+
+    // Nodes
+    for (const n of nodes) {
+      const r = n.kind === 'resolver' ? 10 : n.kind === 'client' ? 8 : 6;
+      const color = n.anomaly ? '#ff4560'
+        : n.kind === 'client'   ? '#00d4ff'
+        : n.kind === 'resolver' ? '#f0a500'
+        : '#00e096';
+
+      // Glow for anomaly
+      if (n.anomaly) {
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, r + 6, 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(255,69,96,0.15)';
+        ctx.fill();
+      }
+
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, r, 0, Math.PI*2);
+      ctx.fillStyle = color;
+      ctx.fill();
+
+      // Label
+      ctx.fillStyle = n.kind === 'domain' ? '#555f6e' : '#c8d0dc';
+      ctx.font = n.kind === 'domain' ? '9px JetBrains Mono' : '10px JetBrains Mono';
+      ctx.textAlign = 'center';
+      const label = n.id.length > 24 ? n.id.slice(0,22) + '…' : n.id;
+      ctx.fillText(label, n.x, n.y + r + 12);
+    }
+  }
+
+  draw();
+}
+
+// ── Events table ─────────────────────────────────────────────────────────────
+function renderEvents() {
+  const filtered = allEvents.filter(ev => {
+    if (activeFilter !== 'all' && ev.severity !== activeFilter) return false;
+    if (searchQuery) {
+      const hay = JSON.stringify(ev.event).toLowerCase();
+      if (!hay.includes(searchQuery)) return false;
+    }
+    return true;
+  });
+
+  evCount.textContent = `${filtered.length} / ${allEvents.length} events`;
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="no-events">No events match filter</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.slice(0, 500).map(ev => {
+    const t   = ev.event.type;
+    const ts  = ev.ts.toFixed(3);
+    const sev = ev.severity;
+    const name   = ev.event.name   || ev.event.names?.join(', ') || '—';
+    const client = ev.event.client || ev.event.src || '—';
+    const server = ev.event.server || '—';
+    const detail = eventDetail(ev.event);
+
+    return `<tr>
+      <td class="ts">${ts}</td>
+      <td><span class="sev-badge sev-${sev}">${sev}</span></td>
+      <td class="muted">${escHtml(t)}</td>
+      <td class="name" title="${escHtml(name)}">${escHtml(truncate(name, 40))}</td>
+      <td class="muted">${escHtml(client)}</td>
+      <td class="muted">${escHtml(server)}</td>
+      <td class="muted" title="${escHtml(detail)}">${escHtml(truncate(detail, 60))}</td>
+    </tr>`;
+  }).join('');
+}
+
+function eventDetail(ev) {
+  switch(ev.type) {
+    case 'QuerySent':
+      return `txid=${ev.txid} qtype=${ev.qtype}`;
+    case 'ResponseReceived':
+      return `txid=${ev.txid} rcode=${ev.rcode} answers=${ev.answer_count} latency=${ev.latency_ms?.toFixed(1)}ms`;
+    case 'QueryTimeout':
+      return `txid=${ev.txid} qtype=${ev.qtype}`;
+    case 'UnsolicitedResponse':
+      return `txid=${ev.txid} rcode=${ev.rcode} src=${ev.src}`;
+    case 'TruncatedResponse':
+      return `txid=${ev.txid} → retry over TCP`;
+    case 'NxdomainFlood':
+      return `${ev.count} NXDOMAIN in ${ev.window_sec}s`;
+    case 'SlowNxdomainProbe':
+      return `${ev.count} NXDOMAIN total`;
+    case 'QueryRetransmit':
+      return `txid=${ev.txid} retransmits=${ev.count}`;
+    case 'TunnelingIndicator':
+      return `reason=${ev.reason} qtype=${ev.qtype}`;
+    case 'TtlAnomaly':
+      return `ttl_min=${ev.ttl_min}s ttl_max=${ev.ttl_max}s`;
+    case 'DuplicateResponse':
+      return `txid=${ev.txid} src1=${ev.first_src} src2=${ev.second_src}`;
+    default:
+      return '';
+  }
+}
+
+// ── Filters ──────────────────────────────────────────────────────────────────
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeFilter = btn.dataset.filter;
+    renderEvents();
+  });
+});
+
+searchEl.addEventListener('input', () => {
+  searchQuery = searchEl.value.toLowerCase().trim();
+  renderEvents();
+});
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function truncate(s, n) {
+  return s.length > n ? s.slice(0, n) + '…' : s;
+}
+</script>
+</body>
+</html>
