@@ -22,3 +22,4 @@ Thumbs.db
 __pycache__/
 *.pyc
 .wrangler/web/pkg/
+web/pkg/
