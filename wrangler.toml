@@ -1,0 +1,8 @@
+name = "dns-postmortem"
+compatibility_date = "2024-01-01"
+
+[assets]
+directory = "./web"
+
+[observability]
+enabled = true
