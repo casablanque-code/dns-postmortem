@@ -75,5 +75,5 @@ wrangler pages deploy web/
 
 - [ospf-postmortem](https://github.com/casablanque-code/ospf-postmortem) — OSPF FSM reconstruction
 - [dhcp-postmortem](https://github.com/casablanque-code/dhcp-postmortem) — DORA FSM + anomaly detection
-- `stp-postmortem` — STP topology analysis
+- [stp-postmortem](https://github.com/casablanque-code/stp-postmortem) — STP topology analysis
 - **dns-postmortem** — DNS forensics + tunneling detection ← you are here

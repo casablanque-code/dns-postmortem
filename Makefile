@@ -1,17 +1,17 @@
-.PHONY: build dev clean check dataset
+\.PHONY: build dev clean dataset check
 
 build:
-	wasm-pack build crates/parser --target web --out-dir ../../web/pkg
+	cd crates/parser && wasm-pack build --target web --out-dir ../../web/pkg
 
 dev:
-	wrangler pages dev web
+	cd crates/parser && wasm-pack build --target web --out-dir ../../web/pkg --dev
 
 clean:
-	rm -rf web/pkg crates/parser/target
+	cd crates/parser && cargo clean
+	rm -rf web/pkg
 
 check:
-	cargo check --manifest-path crates/parser/Cargo.toml
-	cargo test --manifest-path crates/parser/Cargo.toml
+	cd crates/parser && cargo check
 
 dataset:
-	python3 dataset/generate-dataset.py
+	python3 generate-dataset.py
