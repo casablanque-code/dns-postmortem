@@ -72,6 +72,10 @@ jobs:
         with:
           name: web-${{ github.sha }}
           path: web/
+
+      - name: Debug - list files
+        run: find web/ -type f | head -30
+
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
         with:
