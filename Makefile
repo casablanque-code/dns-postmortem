@@ -4,7 +4,7 @@ build:
 	cd crates/parser && wasm-pack build --target web --out-dir ../../web/pkg
 
 dev:
-	cd crates/parser && wasm-pack build --target web --out-dir ../../web/pkg --dev
+	wrangler pages dev web
 
 clean:
 	cd crates/parser && cargo clean

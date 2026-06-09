@@ -196,7 +196,7 @@ fn decode_name_inner(data: &[u8], offset: usize, depth: usize) -> Option<(String
 
     let mut labels: Vec<String> = Vec::new();
     let mut pos = offset;
-    let mut jumped = false;
+    let jumped = false;
     let mut end_offset = 0usize;
 
     loop {
