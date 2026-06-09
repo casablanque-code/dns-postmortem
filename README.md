@@ -5,6 +5,8 @@
 A Rust/WASM tool for post-mortem analysis of DNS traffic captures.
 Drop a `.pcap` or `.pcapng` file — get a full forensic report in your browser.
 
+**Live demo: https://dns.postmortem.casablanque.com/**
+
 ## What it detects
 
 | Anomaly | Description |
