@@ -384,11 +384,10 @@ function renderRootCause(rc) {
 window.toggleRc = (hdr) => hdr.closest('.rc-card').classList.toggle('open');
 
 function renderTopology(events) {
-  console.log('renderTopology called, events:', events.length);
-  console.log('first event type:', events[0]?.event?.type);
   const canvas = document.getElementById('topo-canvas');
   const wrap = document.getElementById('topo-wrap');
   canvas.width = wrap.clientWidth; canvas.height = wrap.clientHeight;
+  console.log('canvas size:', canvas.width, canvas.height);
   const ctx = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
   const clients=new Set(), resolvers=new Set(), domains=new Set(), anomalyNodes=new Set();
@@ -568,7 +567,6 @@ async function processFile(file) {
     document.getElementById('status-text').textContent='Running WASM analyzer…';
     await new Promise(r=>setTimeout(r,20));
     const report=analyze_pcap(new Uint8Array(buf));
-    console.log('first event:', JSON.stringify(report.events[0]));
     fullReport=report; allEvents=report.events; baseTs=report.events[0]?.ts??0;
     statusEl.classList.remove('visible');
     renderSummary(report);
@@ -579,7 +577,7 @@ async function processFile(file) {
       results.classList.add('visible'); return;
     }
     renderRootCause(report.root_cause);
-    renderTopology(report.events);
+    setTimeout(() => renderTopology(report.events), 50);
     renderQueryTable(report.events);
     renderTimeline(allEvents);
     results.classList.add('visible');
