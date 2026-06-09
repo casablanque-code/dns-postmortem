@@ -566,6 +566,7 @@ async function processFile(file) {
     document.getElementById('status-text').textContent='Running WASM analyzer…';
     await new Promise(r=>setTimeout(r,20));
     const report=analyze_pcap(new Uint8Array(buf));
+    console.log('first event:', JSON.stringify(report.events[0]));
     fullReport=report; allEvents=report.events; baseTs=report.events[0]?.ts??0;
     statusEl.classList.remove('visible');
     renderSummary(report);
