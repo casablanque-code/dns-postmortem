@@ -59,6 +59,11 @@ make dataset    # generate test pcaps (Python stdlib only)
 ```bash
 wrangler pages deploy web/
 ```
+or
+
+```bash
+make dev
+```
 
 ## Dataset scenarios
 
