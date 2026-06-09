@@ -384,6 +384,8 @@ function renderRootCause(rc) {
 window.toggleRc = (hdr) => hdr.closest('.rc-card').classList.toggle('open');
 
 function renderTopology(events) {
+  console.log('renderTopology called, events:', events.length);
+  console.log('first event type:', events[0]?.event?.type);
   const canvas = document.getElementById('topo-canvas');
   const wrap = document.getElementById('topo-wrap');
   canvas.width = wrap.clientWidth; canvas.height = wrap.clientHeight;
